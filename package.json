@@ -1,0 +1,17 @@
+{
+  "name": "skribbl-clone",
+  "version": "1.0.0",
+  "description": "Full-stack real-time multiplayer drawing and guessing game (Skribbl.io clone)",
+  "scripts": {
+    "install:server": "npm install --prefix server",
+    "install:client": "npm install --prefix client",
+    "install:all": "npm run install:server && npm run install:client",
+    "dev:server": "npm run dev --prefix server",
+    "dev:client": "npm run dev --prefix client",
+    "build:client": "npm run build --prefix client",
+    "start:server": "npm start --prefix server"
+  },
+  "keywords": ["skribbl", "multiplayer", "canvas", "socket.io", "react"],
+  "author": "",
+  "license": "MIT"
+}

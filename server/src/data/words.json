@@ -1,0 +1,24 @@
+{
+  "animals": [
+    "cat", "dog", "elephant", "giraffe", "monkey", "lion", "tiger", "bear", "rabbit", "penguin",
+    "dolphin", "shark", "whale", "turtle", "frog", "snake", "octopus", "butterfly", "owl", "kangaroo",
+    "panda", "duck", "chicken", "horse", "zebra", "sheep", "pig", "cow", "bee", "spider"
+  ],
+  "objects": [
+    "chair", "table", "lamp", "clock", "television", "guitar", "piano", "book", "pencil", "telephone",
+    "backpack", "umbrella", "camera", "shoe", "hat", "glasses", "key", "door", "window", "car",
+    "bicycle", "airplane", "boat", "rocket", "scissors", "toothbrush", "mirror", "candle", "balloon", "cup"
+  ],
+  "food": [
+    "pizza", "burger", "ice cream", "cake", "banana", "apple", "sandwich", "cookie", "donut", "taco",
+    "sushi", "popcorn", "pancake", "watermelon", "strawberry", "pineapple", "chocolate", "hotdog", "cheese", "egg"
+  ],
+  "places_and_nature": [
+    "beach", "mountain", "forest", "castle", "bridge", "house", "hospital", "school", "volcano", "island",
+    "sun", "moon", "star", "cloud", "rain", "rainbow", "tree", "flower", "campfire", "waterfall"
+  ],
+  "actions": [
+    "dance", "sing", "sleep", "swim", "fly", "jump", "cook", "paint", "read", "cry",
+    "laugh", "fish", "climb", "drive", "skate"
+  ]
+}
