@@ -29,8 +29,10 @@ export function Lobby({ socket, room, myPlayer, players, isHost, showToast }) {
   const handleStartGame = () => {
     if (!socket || !isHost) return;
     if (players.length < 2) {
-      showToast('Need at least 2 players to start a game with friends!', 'info');
-      // For quick development/testing, still allow or warn
+      // Bug 5 fix: return early so we don't emit to the server (which would
+      // produce a second "Need at least 2 players" error toast on top of this one).
+      showToast('Need at least 2 players to start!', 'error');
+      return;
     }
     socket.emit(SOCKET_EVENTS.START_GAME, {});
   };

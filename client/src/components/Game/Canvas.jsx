@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { SOCKET_EVENTS } from '../../constants/events';
 
 // Fixed internal resolution for consistent drawing across different screen sizes
@@ -11,6 +11,13 @@ export function Canvas({ socket, isDrawer, activeColor, activeBrushSize }) {
   const pendingMovesRef = useRef([]);
   const animationFrameRef = useRef(null);
   const strokesHistoryRef = useRef([]);
+
+  // Bug 8 fix: Store color/brushSize in refs so flushMoves always reads the
+  // latest values without stale closures inside requestAnimationFrame callbacks.
+  const activeColorRef = useRef(activeColor);
+  const activeBrushSizeRef = useRef(activeBrushSize);
+  useEffect(() => { activeColorRef.current = activeColor; }, [activeColor]);
+  useEffect(() => { activeBrushSizeRef.current = activeBrushSize; }, [activeBrushSize]);
 
   // Clear canvas surface
   const clearLocalCanvas = useCallback(() => {
@@ -112,20 +119,24 @@ export function Canvas({ socket, isDrawer, activeColor, activeBrushSize }) {
     };
   }, [socket, redrawAllStrokes, clearLocalCanvas]);
 
-  // Flush batched move points via requestAnimationFrame
+  // Bug 8 fix: flushMoves reads from refs — always uses latest color/size
+  // even if they changed between rAF scheduling and execution.
   const flushMoves = useCallback(() => {
     if (pendingMovesRef.current.length > 0 && socket) {
       socket.emit(SOCKET_EVENTS.DRAW_MOVE, {
         points: [...pendingMovesRef.current],
-        color: activeColor,
-        size: activeBrushSize
+        color: activeColorRef.current,
+        size: activeBrushSizeRef.current
       });
       pendingMovesRef.current = [];
     }
     animationFrameRef.current = null;
-  }, [socket, activeColor, activeBrushSize]);
+  }, [socket]);
 
-  // Convert client viewport coordinates to fixed 800x600 internal canvas coordinates
+  // Bug 1 fix: getCanvasCoords uses getBoundingClientRect() which always
+  // reflects the actual rendered pixel size of the canvas element.
+  // Combined with the aspect-ratio CSS on the parent, the scale factors
+  // are always correct and cursor position matches drawn position.
   const getCanvasCoords = (e) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
@@ -150,8 +161,8 @@ export function Canvas({ socket, isDrawer, activeColor, activeBrushSize }) {
     socket.emit(SOCKET_EVENTS.DRAW_START, {
       x,
       y,
-      color: activeColor,
-      size: activeBrushSize
+      color: activeColorRef.current,
+      size: activeBrushSizeRef.current
     });
   };
 
@@ -190,15 +201,20 @@ export function Canvas({ socket, isDrawer, activeColor, activeBrushSize }) {
 
   return (
     <div className="canvas-surface-wrap">
+      {/*
+        canvas-surface-wrap is position:relative; flex:1 (see index.css).
+        This canvas is position:absolute; top:0; left:0; width:100%; height:100%
+        so it fills the entire white drawing area without gaps.
+        getBoundingClientRect() in getCanvasCoords() always reads the actual
+        rendered pixel dimensions so coordinate mapping is always accurate.
+        cursor is set here (not on the parent) so only the drawer gets crosshair.
+      */}
       <canvas
         ref={canvasRef}
         width={CANVAS_WIDTH}
         height={CANVAS_HEIGHT}
         className="canvas-surface"
         style={{
-          width: '100%',
-          height: '100%',
-          objectFit: 'contain',
           cursor: isDrawer ? 'crosshair' : 'default'
         }}
         onPointerDown={handlePointerDown}

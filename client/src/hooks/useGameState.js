@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { SOCKET_EVENTS } from '../constants/events';
+
+const SESSION_KEY = 'sp_rejoin'; // sessionStorage key for refresh recovery
 
 export function useGameState({ socket, isConnected }) {
   const [room, setRoom] = useState(null);
@@ -22,6 +24,17 @@ export function useGameState({ socket, isConnected }) {
   const isHost = myPlayer?.id && room?.hostId === myPlayer.id;
   const isDrawer = myPlayer?.id && drawerId === myPlayer.id;
 
+  // Bug 4 fix: roomRef lets handlers always access the latest room value
+  // without adding room to the useEffect dependency array, which would cause
+  // all socket listeners to be torn down and re-registered on every player
+  // join/leave event, creating a window where events could be missed.
+  const roomRef = useRef(room);
+  useEffect(() => { roomRef.current = room; }, [room]);
+
+  // Also keep a ref to myPlayer for use in auto-rejoin guard
+  const myPlayerRef = useRef(myPlayer);
+  useEffect(() => { myPlayerRef.current = myPlayer; }, [myPlayer]);
+
   const showToast = useCallback((msg, type = 'info') => {
     setToastMessage({ text: msg, type, id: Date.now() });
     setTimeout(() => {
@@ -29,6 +42,57 @@ export function useGameState({ socket, isConnected }) {
     }, 4000);
   }, []);
 
+  // ─── Full state reset helper ───────────────────────────────────────────────
+  const resetAllState = useCallback(() => {
+    setRoom(null);
+    setMyPlayer(null);
+    setPlayers([]);
+    setPhase('lobby');
+    setRound(1);
+    setTotalRounds(3);
+    setDrawerId(null);
+    setDrawerName('');
+    setWordOptions([]);
+    setCurrentWord('');
+    setWordLength(0);
+    setDeadlineTimestamp(null);
+    setMessages([]);
+    setRoundEndData(null);
+    setGameOverData(null);
+  }, []);
+
+  // ─── Leave Room ────────────────────────────────────────────────────────────
+  // Graceful exit: tell server, clear session, reset all local state.
+  const leaveRoom = useCallback(() => {
+    if (socket) {
+      socket.emit(SOCKET_EVENTS.LEAVE_ROOM);
+    }
+    sessionStorage.removeItem(SESSION_KEY);
+    resetAllState();
+  }, [socket, resetAllState]);
+
+  // ─── Auto-rejoin on page refresh ──────────────────────────────────────────
+  // When the socket reconnects (e.g. after a browser refresh) and there is no
+  // active room state, check sessionStorage for a saved roomCode + playerName
+  // and attempt to rejoin automatically.
+  useEffect(() => {
+    if (!socket || !isConnected || myPlayerRef.current) return;
+
+    const saved = sessionStorage.getItem(SESSION_KEY);
+    if (!saved) return;
+
+    try {
+      const { roomCode, playerName } = JSON.parse(saved);
+      if (roomCode && playerName) {
+        console.log(`[GameState] Auto-rejoining room ${roomCode} as "${playerName}"`);
+        socket.emit(SOCKET_EVENTS.JOIN_ROOM, { roomCode, playerName });
+      }
+    } catch {
+      sessionStorage.removeItem(SESSION_KEY);
+    }
+  }, [socket, isConnected]);
+
+  // ─── Socket event handlers ─────────────────────────────────────────────────
   useEffect(() => {
     if (!socket) return;
 
@@ -38,20 +102,53 @@ export function useGameState({ socket, isConnected }) {
       setMyPlayer(data.player);
       setPlayers(data.room.players || [data.player]);
       setPhase('lobby');
+      // Save for refresh recovery
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+        roomCode: data.roomCode,
+        playerName: data.player.name
+      }));
       showToast(`Room created! Code: ${data.roomCode}`, 'success');
     };
 
-    // Joined room success
+    // Joined room success (first join OR browser-refresh reconnect)
     const onJoinedRoomSuccess = (data) => {
       setRoom(data.room);
       setMyPlayer(data.player);
       setPlayers(data.room.players || []);
-      setPhase(data.room.status === 'in_progress' ? 'drawing' : 'lobby');
-      showToast(`Joined room ${data.roomCode}`, 'success');
+
+      // Hydrate game state from server snapshot (critical for refresh reconnect)
+      const game = data.room.game;
+      if (game) {
+        setPhase(game.phase || 'drawing');
+        setRound(game.round || 1);
+        setTotalRounds(game.totalRounds || 3);
+        setDrawerId(game.drawerId || null);
+        setDeadlineTimestamp(game.deadlineTimestamp || null);
+        setWordLength(game.wordLength || 0);
+        // word / blanks: drawer gets actual word, others get blanks
+        setCurrentWord(game.word || game.blanks || '');
+      } else {
+        setPhase('lobby');
+      }
+
+      // Save for refresh recovery
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+        roomCode: data.roomCode,
+        playerName: data.player.name
+      }));
+
+      // Only show toast for fresh joins, not silent reconnects (no toast on refresh)
+      if (!game) {
+        showToast(`Joined room ${data.roomCode}`, 'success');
+      }
     };
 
     // Join error
     const onJoinError = (data) => {
+      // If the room is gone (e.g. after refresh with stale session), clear saved data
+      if (data.reason === 'room_not_found' || data.reason === 'join_failed') {
+        sessionStorage.removeItem(SESSION_KEY);
+      }
       showToast(data.message || data.reason || 'Could not join room', 'error');
     };
 
@@ -64,7 +161,8 @@ export function useGameState({ socket, isConnected }) {
     // Player left broadcast
     const onPlayerLeft = (data) => {
       setPlayers(data.players);
-      if (data.hostId && room) {
+      // Bug 4 fix: use roomRef (always current) instead of closed-over room
+      if (data.hostId && roomRef.current) {
         setRoom(prev => (prev ? { ...prev, hostId: data.hostId } : null));
       }
       showToast(`${data.playerName} left the room.`, 'info');
@@ -73,6 +171,7 @@ export function useGameState({ socket, isConnected }) {
     // Round start - word options offered to drawer
     const onRoundStart = (data) => {
       setDrawerId(data.drawerId);
+      // drawerName for the drawer is their own name; resolved via myPlayer
       setRound(data.round);
       setTotalRounds(data.totalRounds);
       setWordOptions(data.wordOptions || []);
@@ -151,6 +250,7 @@ export function useGameState({ socket, isConnected }) {
       setPhase('round_end');
       setRoundEndData(data);
       setCurrentWord(data.word);
+      setDeadlineTimestamp(null); // hide timer between rounds
       if (data.leaderboard) {
         setPlayers(prev =>
           prev.map(p => {
@@ -165,6 +265,7 @@ export function useGameState({ socket, isConnected }) {
     const onGameOver = (data) => {
       setPhase('game_over');
       setGameOverData(data);
+      setDeadlineTimestamp(null); // hide timer
       showToast(`Game Over! Winner: ${data.winnerName}`, 'success');
     };
 
@@ -204,7 +305,10 @@ export function useGameState({ socket, isConnected }) {
       socket.off(SOCKET_EVENTS.GAME_OVER, onGameOver);
       socket.off(SOCKET_EVENTS.ERROR_MESSAGE, onErrorMessage);
     };
-  }, [socket, room, showToast]);
+  // Bug 4 fix: room is intentionally removed from deps. Handlers that need
+  // room read from roomRef instead. Adding room here caused all listeners
+  // to re-register on every player join/leave (high-churn events).
+  }, [socket, showToast]);
 
   return {
     room,
@@ -226,10 +330,12 @@ export function useGameState({ socket, isConnected }) {
     isHost,
     isDrawer,
     showToast,
+    leaveRoom,
     resetToLobby: () => {
       setPhase('lobby');
       setRoundEndData(null);
       setGameOverData(null);
+      setDeadlineTimestamp(null);
     }
   };
 }

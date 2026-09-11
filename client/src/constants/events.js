@@ -7,6 +7,7 @@ export const SOCKET_EVENTS = {
   JOIN_ERROR: 'join_error',
   PLAYER_JOINED: 'player_joined',
   PLAYER_LEFT: 'player_left',
+  LEAVE_ROOM: 'leave_room',
   START_GAME: 'start_game',
 
   // Game State

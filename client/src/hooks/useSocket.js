@@ -5,37 +5,41 @@ const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:5000';
 
 export function useSocket() {
   const socketRef = useRef(null);
+  const [socket, setSocket] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState(null);
 
   useEffect(() => {
-    const socket = io(SERVER_URL, {
+    const sock = io(SERVER_URL, {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 10,
       reconnectionDelay: 1000
     });
 
-    socketRef.current = socket;
+    socketRef.current = sock;
+    // Expose the socket through state so consumers always get the live instance
+    setSocket(sock);
 
-    socket.on('connect', () => {
-      console.log('[Socket] Connected with ID:', socket.id);
+    sock.on('connect', () => {
+      console.log('[Socket] Connected with ID:', sock.id);
       setIsConnected(true);
       setConnectionError(null);
     });
 
-    socket.on('connect_error', (err) => {
+    sock.on('connect_error', (err) => {
       console.warn('[Socket] Connection error:', err.message);
       setIsConnected(false);
       setConnectionError(err.message);
     });
 
-    socket.on('disconnect', (reason) => {
+    sock.on('disconnect', (reason) => {
       console.log('[Socket] Disconnected:', reason);
       setIsConnected(false);
     });
 
     return () => {
-      socket.disconnect();
+      sock.disconnect();
+      setSocket(null);
     };
   }, []);
 
@@ -63,7 +67,7 @@ export function useSocket() {
   }, []);
 
   return {
-    socket: socketRef.current,
+    socket,
     isConnected,
     connectionError,
     emit,

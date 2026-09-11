@@ -2,6 +2,7 @@ import React from 'react';
 
 export function Scoreboard({
   players,
+  myPlayerId,
   drawerId,
   round,
   totalRounds,
@@ -25,11 +26,12 @@ export function Scoreboard({
           {sortedPlayers.map((player, index) => {
             const isDrawing = player.id === drawerId;
             const hasGuessed = player.hasGuessedCorrectly;
+            const isMe = player.id === myPlayerId;
 
             return (
               <li
                 key={player.id}
-                className={`player-card ${isDrawing ? 'is-drawer' : ''} ${hasGuessed ? 'guessed' : ''}`}
+                className={`player-card ${isDrawing ? 'is-drawer' : ''} ${hasGuessed ? 'guessed' : ''} ${isMe ? 'is-me' : ''}`}
               >
                 <div className="player-info">
                   <div className="player-avatar">
@@ -38,6 +40,7 @@ export function Scoreboard({
                   <div>
                     <div className="player-name">
                       #{index + 1} {player.name}
+                      {isMe && ' 👤'}
                       {isDrawing && ' ✏️'}
                       {hasGuessed && ' ✅'}
                     </div>

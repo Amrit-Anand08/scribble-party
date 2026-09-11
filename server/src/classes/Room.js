@@ -27,7 +27,15 @@ export class Room {
     this.io = io;
 
     /** @type {Map<string, import('./Player.js').Player>} */
-    this.players = new Map(); // key = socketId
+    this.players = new Map(); // key = socketId (CONNECTED players only)
+
+    /**
+     * Grace-period pool: players who disconnected (e.g. refresh) but haven't
+     * been fully removed yet. Keyed by player.id so we can match on reconnect
+     * even though the socketId will be different.
+     * @type {Map<string, import('./Player.js').Player>}
+     */
+    this.disconnectedPlayers = new Map();
 
     /** @type {Game | null} */
     this.game = null;
@@ -57,7 +65,20 @@ export class Room {
     }
   }
 
-  removePlayer(socketId) {
+  /**
+   * Soft-remove a player (default) or hard-remove (grace:false for intentional leave).
+   *
+   * Soft-remove: player is moved to the disconnectedPlayers grace pool so they
+   * can rejoin within GRACE_PERIOD_MS (e.g. after a browser refresh) with their
+   * score and identity intact.
+   *
+   * Hard-remove: player is deleted immediately (used by the leave_room handler).
+   *
+   * @param {string} socketId
+   * @param {{ grace?: boolean }} [opts]
+   * @returns {import('./Player.js').Player | null}
+   */
+  removePlayer(socketId, { grace = true } = {}) {
     const player = this.players.get(socketId);
     if (!player) return null;
 
@@ -77,12 +98,52 @@ export class Room {
     if (this.game) {
       this.game.updatePlayerList(this.getAllPlayers());
       // If current drawer left during drawing, end round
-      if (this.game.currentDrawerId === player.id && (this.game.phase === 'drawing' || this.game.phase === 'choosing')) {
+      if (this.game.currentDrawerId === player.id &&
+          (this.game.phase === 'drawing' || this.game.phase === 'choosing')) {
         this.game.endRound('drawer_left');
       }
     }
 
+    if (grace) {
+      // Keep the player in the grace pool so they can reconnect
+      player.disconnectedAt = Date.now();
+      this.disconnectedPlayers.set(player.id, player);
+    }
+
     return player;
+  }
+
+  /**
+   * Attempt to restore a disconnected player (from the grace pool) to an active
+   * slot using their new socketId.
+   *
+   * Called by the join_room handler when a reconnect is detected.
+   *
+   * @param {string} playerName - The name stored in sessionStorage on the client
+   * @param {string} newSocketId
+   * @returns {import('./Player.js').Player | null} restored player or null
+   */
+  restorePlayer(playerName, newSocketId) {
+    for (const [id, player] of this.disconnectedPlayers) {
+      if (player.name === playerName) {
+        // Restore connection details
+        player.connected = true;
+        player.socketId = newSocketId;
+        player.disconnectedAt = null;
+
+        // Move from grace pool → active
+        this.disconnectedPlayers.delete(id);
+        this.players.set(newSocketId, player);
+
+        // Re-add to game's active player list
+        if (this.game) {
+          this.game.updatePlayerList(this.getAllPlayers());
+        }
+
+        return player;
+      }
+    }
+    return null; // no match found — normal join
   }
 
   startGame(requestingPlayerId) {
@@ -307,5 +368,6 @@ export class Room {
     if (this.game) {
       this.game.cleanup();
     }
+    this.disconnectedPlayers.clear();
   }
 }

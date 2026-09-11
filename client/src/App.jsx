@@ -5,7 +5,7 @@ import { Home } from './pages/Home';
 import { RoomPage } from './pages/RoomPage';
 
 export default function App() {
-  const { socket, isConnected, connectionError } = useSocket();
+  const { socket, isConnected } = useSocket();
   const gameState = useGameState({ socket, isConnected });
 
   return (
@@ -20,16 +20,28 @@ export default function App() {
         <div className="nav-status">
           <div className={`status-dot ${isConnected ? '' : 'disconnected'}`} />
           <span>{isConnected ? 'Connected' : 'Connecting...'}</span>
+
           {gameState.room && (
-            <span style={{ marginLeft: '12px', color: '#f8fafc', fontWeight: 700 }}>
-              Room: {gameState.room.roomCode}
-            </span>
+            <>
+              <span style={{ marginLeft: '12px', color: '#f8fafc', fontWeight: 700 }}>
+                Room: {gameState.room.roomCode}
+              </span>
+              {/* Leave Room button — always visible when inside a room */}
+              <button
+                type="button"
+                className="btn-leave-room"
+                onClick={gameState.leaveRoom}
+                title="Leave this room and return to home"
+              >
+                ← Leave
+              </button>
+            </>
           )}
         </div>
       </header>
 
       {/* Main Content Area */}
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         {!gameState.room ? (
           <Home
             socket={socket}

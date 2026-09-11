@@ -293,11 +293,17 @@ export function Home({ socket, showToast }) {
                       className="btn-primary"
                       style={{ padding: '6px 14px', fontSize: '13px' }}
                       onClick={() => {
+                        // Bug 7 fix: validate name before joining from public list
+                        const cleanName = playerName.trim();
+                        if (!cleanName) {
+                          showToast('Please enter your nickname above first!', 'error');
+                          return;
+                        }
                         setRoomCode(r.roomCode);
                         if (socket) {
                           socket.emit(SOCKET_EVENTS.JOIN_ROOM, {
                             roomCode: r.roomCode,
-                            playerName: playerName.trim()
+                            playerName: cleanName
                           });
                         }
                       }}

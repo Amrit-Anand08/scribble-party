@@ -21,7 +21,12 @@ export function Timer({ deadlineTimestamp }) {
     return () => clearInterval(interval);
   }, [deadlineTimestamp]);
 
-  const isLow = secondsRemaining > 0 && secondsRemaining <= 10;
+  // Hide timer completely when no active deadline (e.g. during choosing phase or between rounds)
+  if (!deadlineTimestamp || secondsRemaining === 0) {
+    return null;
+  }
+
+  const isLow = secondsRemaining <= 10;
 
   return (
     <div className={`timer-badge ${isLow ? 'warning' : ''}`}>

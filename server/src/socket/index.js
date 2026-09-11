@@ -92,6 +92,40 @@ export function setupSockets(io, { roomsByCode, roomsById }) {
           return;
         }
 
+        // ── Reconnect detection ───────────────────────────────────────────────
+        // Check if this is a browser-refresh reconnect: same name, same room,
+        // player is in the grace-period pool (disconnected within last 20 s).
+        const restoredPlayer = room.restorePlayer(playerName, socket.id);
+        if (restoredPlayer) {
+          socket.data.roomId = room.id;
+          socket.data.playerId = restoredPlayer.id;
+          socket.join(room.id);
+
+          // Send full room + game state back to the reconnecting client
+          socket.emit('joined_room_success', {
+            roomId: room.id,
+            roomCode: room.roomCode,
+            player: restoredPlayer.toPublic(),
+            room: room.toPublicState(socket.id)
+          });
+
+          // Notify others that the player is back
+          room.broadcast('player_joined', {
+            player: restoredPlayer.toPublic(),
+            players: room.getAllPlayers().map(p => p.toPublic())
+          });
+
+          // Restore drawing canvas if mid-round
+          if (room.game && room.game.phase === 'drawing') {
+            socket.emit('stroke_history', { strokes: room.game.strokes });
+          }
+
+          console.log(`[Room] Player ${playerName} reconnected to room ${roomCode}`);
+          return;
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
+        // Normal first-time join
         if (room.players.size >= room.settings.maxPlayers) {
           socket.emit('join_error', { reason: 'room_full', message: 'Room is full' });
           return;
@@ -151,7 +185,39 @@ export function setupSockets(io, { roomsByCode, roomsById }) {
     socket.on('guess', (payload) => messageHandler.handleGuess(socket, payload));
     socket.on('chat', (payload) => messageHandler.handleChat(socket, payload));
 
-    // Disconnect
+    // Graceful room exit (player clicks "Leave Room" without closing tab)
+    socket.on('leave_room', () => {
+      const roomId = socket.data?.roomId;
+      if (!roomId) return;
+
+      const room = roomsById.get(roomId);
+      if (!room) return;
+
+      // Hard remove — no grace period for intentional leave
+      const removedPlayer = room.removePlayer(socket.id, { grace: false });
+      if (removedPlayer) {
+        socket.leave(roomId);
+        socket.data.roomId = null;
+        socket.data.playerId = null;
+
+        room.broadcast('player_left', {
+          playerId: removedPlayer.id,
+          playerName: removedPlayer.name,
+          hostId: room.hostId,
+          players: room.getAllPlayers().map(p => p.toPublic())
+        });
+
+        console.log(`[Room] Player ${removedPlayer.name} left room ${room.roomCode} (graceful)`);
+
+        if (room.players.size === 0 && room.disconnectedPlayers.size === 0) {
+          console.log(`[Room] Cleaning up empty room: ${room.roomCode}`);
+          room.cleanup();
+          roomsByCode.delete(room.roomCode);
+          roomsById.delete(room.id);
+        }
+      }
+    });
+
     socket.on('disconnect', () => {
       console.log(`[Socket] Disconnected: ${socket.id}`);
       const roomId = socket.data?.roomId;
@@ -160,7 +226,9 @@ export function setupSockets(io, { roomsByCode, roomsById }) {
       const room = roomsById.get(roomId);
       if (!room) return;
 
-      const removedPlayer = room.removePlayer(socket.id);
+      // Soft-remove with grace period: player goes to disconnectedPlayers pool
+      // so a browser refresh can restore them within GRACE_PERIOD_MS.
+      const removedPlayer = room.removePlayer(socket.id, { grace: true });
       if (removedPlayer) {
         room.broadcast('player_left', {
           playerId: removedPlayer.id,
@@ -169,13 +237,27 @@ export function setupSockets(io, { roomsByCode, roomsById }) {
           players: room.getAllPlayers().map(p => p.toPublic())
         });
 
-        // Clean up empty room
-        if (room.players.size === 0) {
-          console.log(`[Room] Cleaning up empty room: ${room.roomCode}`);
-          room.cleanup();
-          roomsByCode.delete(room.roomCode);
-          roomsById.delete(room.id);
-        }
+        console.log(`[Room] Player ${removedPlayer.name} disconnected (grace period started)`);
+
+        // After the grace period, permanently remove the player slot if they
+        // haven't reconnected, then clean up an empty room.
+        const GRACE_PERIOD_MS = 20_000;
+        setTimeout(() => {
+          // Still in the grace pool? → they didn't reconnect
+          if (room.disconnectedPlayers.has(removedPlayer.id)) {
+            room.disconnectedPlayers.delete(removedPlayer.id);
+            console.log(`[Room] Grace period expired for ${removedPlayer.name}`);
+
+            // Room now fully empty?
+            if (room.players.size === 0 && room.disconnectedPlayers.size === 0) {
+              console.log(`[Room] Cleaning up empty room: ${room.roomCode}`);
+              room.cleanup();
+              roomsByCode.delete(room.roomCode);
+              roomsById.delete(room.id);
+            }
+          }
+          // else: player reconnected — no-op
+        }, GRACE_PERIOD_MS);
       }
     });
   });
