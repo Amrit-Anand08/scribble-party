@@ -36,7 +36,3 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
-
-
-# folders
-project-info/
