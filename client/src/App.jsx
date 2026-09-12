@@ -8,12 +8,12 @@ export default function App() {
   const { socket, isConnected } = useSocket();
   const gameState = useGameState({ socket, isConnected });
 
+  
   return (
     <div className="app-container">
       {/* Top Navbar */}
       <header className="navbar">
         <div className="nav-brand">
-          <span>🎨</span>
           <span>Scribble Party</span>
         </div>
 

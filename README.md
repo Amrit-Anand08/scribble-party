@@ -5,8 +5,8 @@ An end-to-end real-time multiplayer drawing and guessing game built with **React
 ---
 
 ## 🚀 Live Deployment
-- **Frontend App**: `https://scribble-party.onrender.com`
-- **Backend API & WebSockets**: `https://scribble-server.onrender.com`
+- **Frontend App**: `https://scribble-party-client.onrender.com`
+- **Backend API & WebSockets**: `https://scribble-party-server.onrender.com`
 
 ---
 

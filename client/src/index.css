@@ -137,10 +137,11 @@ input, select {
   font-size: 24px;
   font-weight: 700;
   letter-spacing: -0.5px;
-  background: linear-gradient(135deg, #a5b4fc 0%, #ec4899 100%);
+  background-color: white; 
+  /* background: linear-gradient(135deg, #a5b4fc 0%, #ec4899 100%); */
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  text-shadow: 0 2px 10px rgba(99, 102, 241, 0.3);
+  /* text-shadow: 0 2px 10px rgba(99, 102, 241, 0.3); */
 }
 
 .nav-status {
@@ -294,7 +295,8 @@ input, select {
   font-size: 38px;
   text-align: center;
   margin-bottom: 8px;
-  background: linear-gradient(135deg, #f43f5e 0%, #a855f7 50%, #3b82f6 100%);
+  background-color: white;
+  /* background: linear-gradient(135deg, #f43f5e 0%, #a855f7 50%, #3b82f6 100%); */
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
